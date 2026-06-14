@@ -329,37 +329,41 @@ class Gamemale:
             
         self.task_logger.info(f"表态吃瓜完毕！进度: {stance_count}/10")
 
-    # ========================== [模块: 你画我猜] ==========================
+# ========================== [模块: 你画我猜] ==========================
     def draw_and_guess(self):
         self.task_logger.info("准备拿起画笔(你画我猜出题)...")
-        if not self.post_formhash:
-            self.task_logger.warning("没有 formhash，画不了惹")
-            return
-            
-        url = f"https://{self.hostname}/plugin.php?id=viewui_draw&mod=list&ac=draw&inajax=1"
         
-        # 1x1 像素的极简PNG，绕过非空验证
+        # 换成抓包得到的真实 API 接口地址
+        url = f"https://{self.hostname}/plugin.php?id=viewui_draw&mod=api&ac=adddraw"
+        
+        # 1x1 像素极简 PNG，与抓包一模一样
         base64_img = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADklEQVR4AWL6////fwAAAAD//w7I1cwAAAAGSURBVAMACgUD/9k79a8AAAAASUVORK5CYII="
         
+        # 参数名严格对照抓包结果：title, answer, pic
         data = {
-            'formhash': self.post_formhash,
-            'drawsubmit': 'true',
-            'draw_title': '水果',
-            'draw_answer': '苹果',
-            'draw_img': base64_img
+            'title': '水果',
+            'answer': '苹果',
+            'pic': base64_img
+        }
+
+        # 为了防止被拦截，加上专门的请求头假装咱们是浏览器
+        headers = {
+            'x-requested-with': 'XMLHttpRequest',
+            'referer': f"https://{self.hostname}/plugin.php?id=viewui_draw&mod=list&ac=draw"
         }
         
         try:
-            self.task_logger.debug(f"发送你画我猜提交请求: {url}")
-            res = self.session.post(url, data=data).text
+            self.task_logger.debug(f"发送你画我猜真实API请求: {url}")
+            # 这里的 data 传进去，requests 会自动把中文编码成截图里的 %E6 格式
+            res = self.session.post(url, data=data, headers=headers).text
             
-            if "今日还可进行" in res and "0" in res:
+            # API 接口大概率返回的是 JSON，比如 {"code":200, "msg":"成功"}
+            if "成功" in res or "succeed" in res or "200" in res:
+                self.task_logger.info("吸吸，你画我猜出题真实提交成功，可人！")
+            elif "今日" in res and "0" in res:
                 self.task_logger.info("今日画作额度已用完惹，返回主页休息。")
-            elif "成功" in res or "succeed" in res:
-                self.task_logger.info("吸吸，你画我猜出题提交成功，可人！")
             else:
-                # 只截取前30个字符避免输出过长的杂乱代码
-                self.task_logger.info(f"你画我猜已执行，论坛返回状态喵: {res[:30]}...")
+                self.task_logger.info(f"你画我猜已执行，论坛返回状态喵: {res[:50]}...")
                 
             time.sleep(1)
         except Exception as e:
