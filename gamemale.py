@@ -29,6 +29,7 @@ class Gamemale:
         self.login_logger = setup_logger('登录', verbose)
         self.sign_logger = setup_logger('签到', verbose)
         self.exchange_logger = setup_logger('抽奖', verbose)
+        self.task_logger = setup_logger('日常任务', verbose)
         
         self.login_logger.debug(f"当前用户: {username}")
         
@@ -143,7 +144,7 @@ class Gamemale:
         if "succeed" in resp_text:
             self.login_logger.info("登录成功")
             
-            self.login_logger.debug(f"尝试访问论坛主页，以获取签到所需的 formhash")
+            self.login_logger.debug(f"尝试访问论坛主页，以获取后续操作所需的 formhash")
             forum_url = f"https://{self.hostname}/forum.php"
             try:
                 text = self.session.get(forum_url).text
@@ -153,7 +154,7 @@ class Gamemale:
                 )
                 if formhash_match:
                     self.post_formhash = formhash_match.group(1)
-                    self.login_logger.debug(f"formhash:'{self.post_formhash}'")
+                    self.login_logger.debug(f"成功获取全局 formhash:'{self.post_formhash}'")
                 else:
                     self.login_logger.warning("无法获取 formhash")
             except Exception as e:
@@ -218,7 +219,7 @@ class Gamemale:
             f"&formhash={self.post_formhash}&_={timestamp}"
         )
         headers = {
-            'accept': 'application/json, text/javascript, /; q=0.01',
+            'accept': 'application/json, text/javascript, */*; q=0.01',
             'referer': f"https://{self.hostname}/it618_award-award.html",
             'x-requested-with': 'XMLHttpRequest',
         }
@@ -247,28 +248,150 @@ class Gamemale:
                 "exchange_status": "天啦噜，抽奖请求失败"
             }
 
+    # ========================== [模块: 访问空间] ==========================
+    def visit_spaces(self):
+        self.task_logger.info("正在偷偷潜入别人的空间惹...")
+        uids = [730713, 62445, 61832]
+        success_count = 0
+        for uid in uids:
+            url = f"https://{self.hostname}/space-uid-{uid}.html"
+            try:
+                self.session.get(url)
+                success_count += 1
+                time.sleep(1)
+            except Exception as e:
+                self.task_logger.error(f"访问空间 UID:{uid} 失败: {e}")
+        self.task_logger.info(f"空间访问完毕！进度: {success_count}/3")
+
+    # ========================== [模块: 打招呼] ==========================
+    def poke_users(self):
+        self.task_logger.info("正在向大佬们暗送秋波(打招呼)...")
+        if not self.post_formhash:
+            self.task_logger.warning("没有 formhash，无法发送打招呼请求惹")
+            return
+            
+        uids = [730713, 62445, 61832]
+        success_count = 0
+        for uid in uids:
+            url = f"https://{self.hostname}/home.php?mod=spacecp&ac=poke&op=send&uid={uid}&inajax=1"
+            data = {
+                'formhash': self.post_formhash,
+                'referer': f"https://{self.hostname}/space-uid-{uid}.html",
+                'poke': '1',
+                'iconid': '3',
+                'pokesubmit': 'true'
+            }
+            try:
+                res = self.session.post(url, data=data).text
+                if "succeed" in res or "成功" in res:
+                    success_count += 1
+                time.sleep(1)
+            except Exception as e:
+                self.task_logger.error(f"打招呼 UID:{uid} 失败: {e}")
+        self.task_logger.info(f"打招呼完毕！进度: {success_count}/3")
+
+    # ========================== [模块: 日志表态] ==========================
+    def stance_blogs(self):
+        self.task_logger.info("正在疯狂吃瓜(日志表态)...")
+        if not self.post_formhash:
+            self.task_logger.warning("没有 formhash，无法表态惹")
+            return
+            
+        stance_count = 0
+        page = 1
+        max_pages = 5
+        
+        while stance_count < 10 and page <= max_pages:
+            list_url = f"https://{self.hostname}/home.php?mod=space&do=blog&view=all&catid=14&page={page}"
+            try:
+                res = self.session.get(list_url).text
+                blog_urls = set(re.findall(r'href="(home\.php\?mod=space&amp;uid=\d+&amp;do=blog&amp;id=\d+)"', res))
+                
+                for partial_url in blog_urls:
+                    if stance_count >= 10:
+                        break
+                        
+                    blog_url = f"https://{self.hostname}/{partial_url.replace('&amp;', '&')}"
+                    blog_res = self.session.get(blog_url).text
+                    
+                    click_match = re.search(r'href="(home\.php\?mod=spacecp&amp;ac=click&amp;op=add.*?)"', blog_res)
+                    if click_match:
+                        click_url = f"https://{self.hostname}/{click_match.group(1).replace('&amp;', '&')}"
+                        action_res = self.session.get(click_url).text
+                        if "表态成功" in action_res or "succeed" in action_res:
+                            stance_count += 1
+                            self.task_logger.debug(f"吸吸，成功表态1篇，当前进度: {stance_count}/10")
+                    time.sleep(1)
+            except Exception as e:
+                self.task_logger.error(f"获取/表态日志失败 (第{page}页): {e}")
+            
+            page += 1
+            
+        self.task_logger.info(f"表态吃瓜完毕！进度: {stance_count}/10")
+
+    # ========================== [模块: 你画我猜] ==========================
+    def draw_and_guess(self):
+        self.task_logger.info("准备拿起画笔(你画我猜出题)...")
+        if not self.post_formhash:
+            self.task_logger.warning("没有 formhash，画不了惹")
+            return
+            
+        url = f"https://{self.hostname}/plugin.php?id=viewui_draw&mod=list&ac=draw&inajax=1"
+        
+        # 1x1 像素的极简PNG，绕过非空验证
+        base64_img = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADklEQVR4AWL6////fwAAAAD//w7I1cwAAAAGSURBVAMACgUD/9k79a8AAAAASUVORK5CYII="
+        
+        data = {
+            'formhash': self.post_formhash,
+            'drawsubmit': 'true',
+            'draw_title': '水果',
+            'draw_answer': '苹果',
+            'draw_img': base64_img
+        }
+        
+        try:
+            self.task_logger.debug(f"发送你画我猜提交请求: {url}")
+            res = self.session.post(url, data=data).text
+            
+            if "今日还可进行" in res and "0" in res:
+                self.task_logger.info("今日画作额度已用完惹，返回主页休息。")
+            elif "成功" in res or "succeed" in res:
+                self.task_logger.info("吸吸，你画我猜出题提交成功，可人！")
+            else:
+                # 只截取前30个字符避免输出过长的杂乱代码
+                self.task_logger.info(f"你画我猜已执行，论坛返回状态喵: {res[:30]}...")
+                
+            time.sleep(1)
+        except Exception as e:
+            self.task_logger.error(f"你画我猜提交失败: {e}")
+
     def run(self):
         self.main_logger.info("=== 全自动站街女 ===")
         if not self.login():
             return
+            
         self.sign_gamemale()
         self.daily_exchange()
+        
+        self.visit_spaces()
+        self.poke_users()
+        self.stance_blogs()
+        self.draw_and_guess()
         
         self.main_logger.info("=== 今日站街成果 ===")
         if self.sign_result:
             self.main_logger.info(f"签到: {self.sign_result['status']}")
         if self.exchange_result:
             self.main_logger.info(f"抽奖: {self.exchange_result['exchange_status']}")
+        self.main_logger.info("日常一键: 空间/打招呼/表态/你画我猜 均已执行完毕，可人！")
 
 def main():
-    username = os.getenv("USERNAME")
-    password = os.getenv("PASSWORD")
-    # questionid = os.getenv("QID")
-    # answer = os.getenv("ANSWER")
+    username = os.getenv("GM_USERNAME")
+    password = os.getenv("GM_PASSWORD")
     
     if not username or not password:
         logger = setup_logger("GameMale")
-        logger.error("天啦噜，信息不全就想登录？")
+        logger.error("天啦噜，信息不全就想登录？快去 Secrets 里配置 GM_USERNAME 和 GM_PASSWORD")
         exit(1)
     gm = Gamemale(username, password, verbose=False)
     gm.run()
