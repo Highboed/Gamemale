@@ -386,8 +386,8 @@ class Gamemale:
         self.main_logger.info("日常一键: 空间/打招呼/表态/你画我猜 均已执行完毕，可人！")
 
 def main():
-    username = os.getenv("GM_USERNAME")
-    password = os.getenv("GM_PASSWORD")
+    username = os.getenv("USERNAME")
+    password = os.getenv("PASSWORD")
     
     if not username or not password:
         logger = setup_logger("GameMale")
