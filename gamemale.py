@@ -305,19 +305,32 @@ class Gamemale:
             list_url = f"https://{self.hostname}/home.php?mod=space&do=blog&view=all&catid=14&page={page}"
             try:
                 res = self.session.get(list_url).text
-                blog_urls = set(re.findall(r'href="(home\.php\?mod=space&amp;uid=\d+&amp;do=blog&amp;id=\d+)"', res))
                 
-                for partial_url in blog_urls:
+                # 【修复1】强化正则：不限制 href 开头，兼容 & 和 &amp;
+                blog_uris = set(re.findall(r'home\.php\?mod=space(?:&amp;|&)uid=\d+(?:&amp;|&)do=blog(?:&amp;|&)id=\d+', res))
+                
+                for uri in blog_uris:
                     if stance_count >= 10:
                         break
                         
-                    blog_url = f"https://{self.hostname}/{partial_url.replace('&amp;', '&')}"
+                    # 统一清洗链接，拼装成完整的 URL
+                    clean_uri = uri.replace('&amp;', '&')
+                    blog_url = f"https://{self.hostname}/{clean_uri}"
                     blog_res = self.session.get(blog_url).text
                     
-                    click_match = re.search(r'href="(home\.php\?mod=spacecp&amp;ac=click&amp;op=add.*?)"', blog_res)
+                    # 【修复2】强化正则：抓取表态点击链接，一直截取到引号结束
+                    click_match = re.search(r'(home\.php\?mod=spacecp(?:&amp;|&)ac=click(?:&amp;|&)op=add[^"\']+)', blog_res)
                     if click_match:
-                        click_url = f"https://{self.hostname}/{click_match.group(1).replace('&amp;', '&')}"
-                        action_res = self.session.get(click_url).text
+                        click_uri = click_match.group(1).replace('&amp;', '&')
+                        click_url = f"https://{self.hostname}/{click_uri}"
+                        
+                        # 加上防拦截头，模拟是从日志页面点过去的
+                        headers = {
+                            'referer': blog_url,
+                            'x-requested-with': 'XMLHttpRequest'
+                        }
+                        action_res = self.session.get(click_url, headers=headers).text
+                        
                         if "表态成功" in action_res or "succeed" in action_res:
                             stance_count += 1
                             self.task_logger.debug(f"吸吸，成功表态1篇，当前进度: {stance_count}/10")
